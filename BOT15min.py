@@ -73,7 +73,7 @@ def check_markets():
                 continue 
             
             # === 3. البحث عن فرص شراء جديدة (إذا لم تكن العملة في الذاكرة) ===
-            bars = exchange.fetch_ohlcv(symbol, timeframe, limit=100)
+            bars = exchange.fetch_ohlcv(symbol, timeframe, limit=300)
             df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             
             # حساب المؤشرات
