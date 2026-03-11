@@ -19,7 +19,7 @@ def send_telegram_message(message):
 
 # === إعدادات التداول ===
 # استخدم bybit إذا كانت سيرفرات Railway محظورة من باينانس
-exchange = ccxt.bybit() 
+exchange = ccxt.binance() 
 
 symbols = ['ETH/USDT', 'SOL/USDT', 'NEAR/USDT', 'ADA/USDT', 'XRP/USDT', 'ROSE/USDT', 'SUI/USDT', 'LTC/USDT', 'TON/USDT', 'OP/USDT', 'IOTX/USDT', 'ANKR/USDT', 'GALA/USDT', 'UNI/USDT', 'RUNE/USDT', 'LINK/USDT', 'HBAR/USDT', 'DOT/USDT']
 timeframe = '15m'
