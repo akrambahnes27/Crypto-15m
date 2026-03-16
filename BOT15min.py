@@ -1,213 +1,248 @@
 import ccxt
 import pandas as pd
-import pandas_ta as ta
-import time
-from datetime import datetime, timezone, timedelta
+import numpy as np
 import requests
+import time
+import schedule
+import logging
+from datetime import datetime
 
-# === إعدادات تليجرام ===
-TELEGRAM_TOKEN = '8161859979:AAFlliIFMfGNlr_xQUlxF92CgDX00PaqVQ8'
-CHAT_ID = '1055739217'
+# ==========================================
+# === 1. إعدادات البوت الأساسية ===
+# ==========================================
+TELEGRAM_TOKEN = "8161859979:AAFlliIFMfGNlr_xQUlxF92CgDX00PaqVQ8"
+TELEGRAM_CHAT_ID = "1055739217"
 
-def send_telegram_message(message):
+# قائمة العملات التي سيراقبها البوت
+SYMBOLS = ["ETH/USDT", "SOL/USDT", "TRX/USDT", "ADA/USDT", "XLM/USDT", "SUI/USDT", "LINK/USDT", "HBAR/USDT",
+"BCH/USDT", "AVAX/USDT", "LTC/USDT", "TON/USDT", "UNI/USDT", "DOT/USDT", "XMR/USDT", "AAVE/USDT",
+"TAO/USDT", "NEAR/USDT", "ETC/USDT", "ONDO/USDT", "APT/USDT", "ICP/USDT", "FTM/USDT", "POL/USDT",
+"ALGO/USDT", "ARB/USDT", "VET/USDT", "RNDR/USDT", "WLD/USDT", "SEI/USDT", "ATOM/USDT", "FIL/USDT",
+"LRC/USDT", "JUP/USDT", "QNT/USDT", "INJ/USDT", "TIA/USDT", "STX/USDT", "OP/USDT", "ENS/USDT",
+"IMX/USDT", "GRT/USDT", "LDO/USDT", "CFX/USDT", "CAKE/USDT", "XTZ/USDT", "THETA/USDT", "JASMY/USDT",
+"NEXO/USDT", "IOTA/USDT", "RAY/USDT", "GALA/USDT", "SAND/USDT", "PENDLE/USDT", "JTO/USDT", "FLOW/USDT",
+"ZEC/USDT", "HNT/USDT", "MANA/USDT", "CVX/USDT", "RUNE/USDT", "AR/USDT", "APE/USDT", "STRK/USDT",
+"DYDX/USDT", "NEO/USDT", "EGLD/USDT", "COMP/USDT", "AXS/USDT", "AXL/USDT", "CELR/USDT", "ENJ/USDT",
+"MATIC/USDT", "OMG/USDT", "HOT/USDT", "CHZ/USDT", "DOGE/USDT", "SHIB/USDT", "PEPE/USDT", "FET/USDT",
+"CRV/USDT", "BTT/USDT", "CHR/USDT", "MASK/USDT", "EOS/USDT", "RPL/USDT", "AIXBT/USDT", "IOTX/USDT",
+"ANKR/USDT", "PENGU/USDT"]
+EXCHANGE_NAME = "binance"
+
+# إعدادات الاستراتيجية
+DROP_PERC = 0.6  # نسبة الهبوط المطلوبة للقمة
+TP_PERC = 2.5    # هدف الربح (%)
+SL_PERC = 3.0    # وقف الخسارة (%)
+
+# إعدادات السجل (Logging)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {'chat_id': CHAT_ID, 'text': message, 'parse_mode': 'Markdown'}
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
     try:
-        requests.post(url, data=payload)
+        requests.post(url, json=payload)
     except Exception as e:
-        print(f"خطأ في إرسال التليجرام: {e}")
+        logging.error(f"خطأ في إرسال التليجرام: {e}")
 
-# === إعدادات التداول والوقت ===
-exchange = ccxt.binance() 
-symbols = ['ETH/USDT', 'SOL/USDT', 'TRX/USDT', 'ADA/USDT', 'XLM/USDT', 'SUI/USDT', 'LINK/USDT', 'HBAR/USDT',
-'BCH/USDT', 'AVAX/USDT', 'LTC/USDT', 'TON/USDT', 'UNI/USDT', 'DOT/USDT', 'XMR/USDT', 'AAVE/USDT',
-'TAO/USDT', 'NEAR/USDT', 'ETC/USDT', 'ONDO/USDT', 'APT/USDT', 'ICP/USDT', 'FTM/USDT', 'POL/USDT',
-'ALGO/USDT', 'ARB/USDT', 'VET/USDT', 'RNDR/USDT', 'WLD/USDT', 'SEI/USDT', 'ATOM/USDT', 'FIL/USDT',
-'LRC/USDT', 'JUP/USDT', 'QNT/USDT', 'INJ/USDT', 'TIA/USDT', 'STX/USDT', 'OP/USDT', 'ENS/USDT',
-'IMX/USDT', 'GRT/USDT', 'LDO/USDT', 'CFX/USDT', 'CAKE/USDT', 'XTZ/USDT', 'THETA/USDT', 'JASMY/USDT',
-'NEXO/USDT', 'IOTA/USDT', 'RAY/USDT', 'GALA/USDT', 'SAND/USDT', 'PENDLE/USDT', 'JTO/USDT', 'FLOW/USDT',
-'ZEC/USDT', 'HNT/USDT', 'MANA/USDT', 'CVX/USDT', 'RUNE/USDT', 'AR/USDT', 'APE/USDT', 'STRK/USDT',
-'DYDX/USDT', 'NEO/USDT', 'EGLD/USDT', 'COMP/USDT', 'AXS/USDT', 'AXL/USDT', 'CELR/USDT', 'ENJ/USDT',
-'MATIC/USDT', 'OMG/USDT', 'HOT/USDT', 'CHZ/USDT', 'DOGE/USDT', 'SHIB/USDT', 'PEPE/USDT', 'FET/USDT',
-'CRV/USDT', 'BTT/USDT', 'CHR/USDT', 'MASK/USDT', 'EOS/USDT', 'RPL/USDT', 'AIXBT/USDT', 'IOTX/USDT',
-'ANKR/USDT', 'PENGU/USDT']
-timeframe = '15m'
-
-# ضبط توقيت الجزائر (UTC+1)
-algeria_tz = timezone(timedelta(hours=1))
-
-# === ذاكرة البوت ===
-active_trades = {} 
-
-# عدادات الأرباح والخسائر
-stats = {
-    'daily': {'wins': 0, 'losses': 0, 'pnl': 0.0},
-    'weekly': {'wins': 0, 'losses': 0, 'pnl': 0.0}
-}
-
-# تسجيل تاريخ اليوم لمعرفة متى يمر منتصف الليل
-last_checked_date = datetime.now(algeria_tz).date()
-
-def check_markets():
-    current_time_dz = datetime.now(algeria_tz)
-    current_time_str = current_time_dz.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"\n[{current_time_str}] 🔍 جاري فحص الأسواق...") 
+# ==========================================
+# === 2. حساب المؤشرات (Indicators) ===
+# ==========================================
+def calculate_ama(df, length=90, att=0.3, pwr=1.0):
+    hh = df['high'].rolling(window=length).max()
+    ll = df['low'].rolling(window=length).min()
+    mid = (hh + ll) / 2
+    range_half = (hh - ll) / 2
     
-    for symbol in symbols:
-        try:
-            ticker = exchange.fetch_ticker(symbol)
-            current_price = ticker['last']
-            
-            # === 1. إدارة الصفقات المفتوحة (وتسجيل الأرباح/الخسائر) ===
-            if symbol in active_trades:
-                trade = active_trades[symbol]
-                pnl_pct = ((current_price - trade['entry']) / trade['entry']) * 100
-                
-                # --- حالة جني الأرباح ---
-                if current_price >= trade['tp']:
-                    msg = (f"✅ *جني أرباح (Take Profit)* ✅\n"
-                           f"━━━━━━━━━━━━━━\n"
-                           f"🪙 *العملة:* {symbol}\n"
-                           f"⏱️ *الوقت:* {current_time_str}\n"
-                           f"💰 *سعر البيع:* {current_price}\n"
-                           f"📈 *صافي الربح:* +{pnl_pct:.2f}% 🟢\n"
-                           f"━━━━━━━━━━━━━━\n"
-                           f"🎉 *ألف مبروك الأرباح!*")
-                    send_telegram_message(msg)
-                    print(f"[{current_time_str}] تم بيع {symbol} بربح.")
-                    
-                    # تسجيل الربح في العدادات
-                    stats['daily']['wins'] += 1
-                    stats['daily']['pnl'] += pnl_pct
-                    stats['weekly']['wins'] += 1
-                    stats['weekly']['pnl'] += pnl_pct
-                    
-                    del active_trades[symbol]
-                
-                # --- حالة وقف الخسارة ---
-                elif current_price <= trade['sl']:
-                    msg = (f"⚠️ *إغلاق صفقة (Stop Loss)* ⚠️\n"
-                           f"━━━━━━━━━━━━━━\n"
-                           f"🪙 *العملة:* {symbol}\n"
-                           f"⏱️ *الوقت:* {current_time_str}\n"
-                           f"🩸 *سعر البيع:* {current_price}\n"
-                           f"📉 *التراجع:* {pnl_pct:.2f}% 🔴\n"
-                           f"━━━━━━━━━━━━━━\n"
-                           f"🔄 *جاري البحث عن فرصة للتعويض...*")
-                    send_telegram_message(msg)
-                    print(f"[{current_time_str}] تم ضرب وقف خسارة {symbol}.")
-                    
-                    # تسجيل الخسارة في العدادات
-                    stats['daily']['losses'] += 1
-                    stats['daily']['pnl'] += pnl_pct
-                    stats['weekly']['losses'] += 1
-                    stats['weekly']['pnl'] += pnl_pct
-                    
-                    del active_trades[symbol]
-                continue 
-            
-            # === 2. جلب البيانات والتحليل ===
-            bars = exchange.fetch_ohlcv(symbol, timeframe, limit=300) 
-            df = pd.DataFrame(bars, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-            
-            df['ema200'] = ta.ema(df['close'], length=200)
-            df['rsi'] = ta.rsi(df['close'], length=14)
-            df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
-            
-            last_closed = df.iloc[-2]
-            prev_closed = df.iloc[-3]
-            
-            is_uptrend = last_closed['close'] > last_closed['ema200']
-            recent_rsi = df['rsi'].iloc[-7:-2]
-            was_oversold = recent_rsi.min() < 30
-            bullish_confirm = (last_closed['close'] > last_closed['open']) and (last_closed['close'] > prev_closed['high'])
-            
-            trend_str = "صاعد 🟢" if is_uptrend else "هابط 🔴"
-            rsi_val = last_closed['rsi']
-            print(f"  ➜ {symbol} | السعر: {current_price} | RSI: {rsi_val:.1f} | الترند: {trend_str}")
-            
-            # === 3. الشراء ===
-            if is_uptrend and was_oversold and bullish_confirm:
-                entry = current_price
-                atr_val = last_closed['atr']
-                sl = entry - (atr_val * 3.0)
-                tp = entry + (atr_val * 2.5) 
-                
-                active_trades[symbol] = {'entry': entry, 'tp': tp, 'sl': sl}
-                
-                msg = (f"🚀 *إشارة دخول جديدة (BUY)* 🚀\n"
-                       f"━━━━━━━━━━━━━━\n"
-                       f"🪙 *العملة:* {symbol}\n"
-                       f"⏱️ *الوقت:* {current_time_str}\n"
-                       f"💵 *سعر الدخول:* {entry}\n"
-                       f"🎯 *الهدف الأول:* {tp:.4f}\n"
-                       f"🛡️ *وقف الخسارة:* {sl:.4f}\n"
-                       f"━━━━━━━━━━━━━━\n"
-                       f"📊 *الاستراتيجية:* قناص V39")
-                send_telegram_message(msg)
-                print(f"[{current_time_str}] تم شراء {symbol} وإرسال إشعار.")
-                
-        except Exception as e:
-            print(f"[{current_time_str}] خطأ في فحص {symbol}: {e}")
-
-def check_and_send_reports():
-    global last_checked_date
-    now_dz = datetime.now(algeria_tz)
-    current_date = now_dz.date()
+    ama = np.full(len(df), np.nan)
+    closes = df['close'].values
+    mids = mid.values
+    rhs = range_half.values
     
-    # إذا تغير اليوم (تجاوزنا منتصف الليل بتوقيت الجزائر 00:00)
-    if current_date > last_checked_date:
+    for i in range(len(closes)):
+        if np.isnan(mids[i]) or np.isnan(rhs[i]):
+            continue
+        dist = 0 if rhs[i] == 0 else abs(closes[i] - mids[i]) / rhs[i]
+        alpha = 1 if att == 0 else pow(dist / att, pwr)
+        alpha = max(0, min(1, alpha))
         
-        # 1. إعداد التقرير اليومي
-        daily = stats['daily']
-        d_color = "🟢" if daily['pnl'] >= 0 else "🔴"
-        d_sign = "+" if daily['pnl'] > 0 else ""
-        
-        daily_msg = (f"📊 *حـصـاد الـيـوم* 📊\n"
-                     f"━━━━━━━━━━━━━━\n"
-                     f"📅 *التاريخ:* {last_checked_date}\n"
-                     f"✅ *صفقات رابحة:* {daily['wins']}\n"
-                     f"❌ *صفقات خاسرة:* {daily['losses']}\n"
-                     f"💰 *النتيجة النهائية:* {d_sign}{daily['pnl']:.2f}% {d_color}\n"
-                     f"━━━━━━━━━━━━━━\n"
-                     f"🌙 *تصبح على أرباح!*")
-        send_telegram_message(daily_msg)
-        
-        # 2. إعداد التقرير الأسبوعي (يُرسل فجر الاثنين، أي أن يوم الأحد قد انتهى)
-        if current_date.weekday() == 0: 
-            weekly = stats['weekly']
-            w_color = "🟢" if weekly['pnl'] >= 0 else "🔴"
-            w_sign = "+" if weekly['pnl'] > 0 else ""
+        if i == 0 or np.isnan(ama[i-1]):
+            ama[i] = closes[i]
+        else:
+            ama[i] = ama[i-1] + alpha * (closes[i] - ama[i-1])
             
-            weekly_msg = (f"🏆 *الـحـصـاد الأَسـبـوعـي* 🏆\n"
-                          f"━━━━━━━━━━━━━━\n"
-                          f"📅 *الأسبوع المنتهي:* {last_checked_date}\n"
-                          f"✅ *إجمالي الرابحة:* {weekly['wins']}\n"
-                          f"❌ *إجمالي الخاسرة:* {weekly['losses']}\n"
-                          f"💰 *النتيجة الأسبوعية:* {w_sign}{weekly['pnl']:.2f}% {w_color}\n"
-                          f"━━━━━━━━━━━━━━\n"
-                          f"🔥 *أسبوع جديد، أهداف جديدة!*")
-            send_telegram_message(weekly_msg)
-            
-            # تصفير العداد الأسبوعي
-            stats['weekly'] = {'wins': 0, 'losses': 0, 'pnl': 0.0}
-        
-        # تصفير العداد اليومي
-        stats['daily'] = {'wins': 0, 'losses': 0, 'pnl': 0.0}
-        
-        # تحديث التاريخ ليوم الغد
-        last_checked_date = current_date
+    df['ama'] = ama
+    return df
 
-# === تشغيل البوت ===
-print("🤖 البوت يعمل الآن ويقوم بفحص الأسواق...")
-startup_msg = (f"🟢 *تـم تـشـغـيـل الـنـظـام* 🟢\n"
-               f"━━━━━━━━━━━━━━\n"
-               f"🤖 *البوت:* المتداول الآلي (V39)\n"
-               f"🇩🇿 *التوقيت:* الجزائر (محاسبة منتصف الليل)\n"
-               f"📲 *التنبيهات:* متصل وجاهز 100%")
-send_telegram_message(startup_msg)
+def get_indicators(exchange, symbol):
+    # جلب فريم 30 دقيقة
+    ohlcv_30m = exchange.fetch_ohlcv(symbol, timeframe='30m', limit=150)
+    df_30 = pd.DataFrame(ohlcv_30m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df_30['macdFast'] = df_30['close'].ewm(span=2, adjust=False).mean()
+    df_30['macdSlow'] = df_30['close'].ewm(span=4, adjust=False).mean()
+    df_30['macdLine'] = df_30['macdFast'] - df_30['macdSlow']
+    df_30['signalLine'] = df_30['macdLine'].ewm(span=3, adjust=False).mean()
+    df_30['macdBullish30'] = df_30['macdLine'] > df_30['signalLine']
+    df_30 = calculate_ama(df_30)
+    last_30m = df_30.iloc[-2]
 
-while True:
-    check_markets()
-    check_and_send_reports() # فحص هل حان منتصف الليل؟
-    time.sleep(60)
+    # جلب فريم 1 دقيقة
+    ohlcv_1m = exchange.fetch_ohlcv(symbol, timeframe='1m', limit=50)
+    df_1 = pd.DataFrame(ohlcv_1m, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df_1['highest_close'] = df_1['close'].rolling(22).max()
+    df_1['wvf'] = ((df_1['highest_close'] - df_1['low']) / df_1['highest_close']) * 100
+    df_1['wvf_highest_prev'] = df_1['wvf'].shift(1).rolling(22).max()
+    df_1['wvf_green'] = df_1['wvf'] >= df_1['wvf_highest_prev']
+    df_1['sma_20'] = df_1['close'].rolling(20).mean()
+    df_1['sqzValue'] = df_1['close'] - df_1['sma_20']
+    df_1['sqzValue_prev'] = df_1['sqzValue'].shift(1)
+    df_1['isStrongBullish'] = (df_1['sqzValue'] > 0) & (df_1['sqzValue'] > df_1['sqzValue_prev'])
+    df_1['isWeakBearish'] = (df_1['sqzValue'] < 0) & (df_1['sqzValue'] > df_1['sqzValue_prev'])
+    
+    return df_1.iloc[-1], last_30m['ama'], last_30m['macdBullish30']
+
+# ==========================================
+# === 3. محرك المراقبة والتنبيهات الوهمية ===
+# ==========================================
+class AlertBot:
+    def __init__(self):
+        # اتصال عام مجاني (بدون API Key)
+        self.exchange = getattr(ccxt, EXCHANGE_NAME)({'enableRateLimit': True})
+        
+        # إنشاء ذاكرة مستقلة لكل عملة
+        self.state = {sym: {
+            "in_position": False, 
+            "entry_price": 0.0, 
+            "entry_time": None, 
+            "peak_since_exit": 0.0
+        } for sym in SYMBOLS}
+        
+        # إحصائيات عامة
+        self.stats = {"win": 0, "loss": 0}
+        
+        logging.info("🤖 تم تشغيل بوت التنبيهات بنجاح!")
+        send_telegram("🟢 <b>بدأ بوت التنبيهات بالمراقبة</b>\nالوضع: تداول وهمي (تنبيهات فقط لعدة عملات).")
+
+    def run_strategy(self):
+        for symbol in SYMBOLS:
+            try:
+                current_bar, ama30, macdBullish30 = get_indicators(self.exchange, symbol)
+                close = current_bar['close']
+                high = current_bar['high']
+                sym_state = self.state[symbol]
+                curr_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                # تحديث قمة العملة إذا لم نكن في صفقة وهمية
+                if not sym_state["in_position"]:
+                    if sym_state["peak_since_exit"] == 0.0:
+                        sym_state["peak_since_exit"] = high
+                    else:
+                        sym_state["peak_since_exit"] = max(sym_state["peak_since_exit"], high)
+
+                # --- منطق الدخول (تنبيه شراء) ---
+                if not sym_state["in_position"]:
+                    req_price = sym_state["peak_since_exit"] * (1 - DROP_PERC / 100)
+                    isPriceDropped = (sym_state["peak_since_exit"] == 0.0) or (close <= req_price)
+                    buyCond = current_bar['wvf_green'] and (current_bar['isStrongBullish'] or current_bar['isWeakBearish'])
+
+                    if buyCond and (close > ama30) and macdBullish30 and isPriceDropped:
+                        # حفظ بيانات الصفقة الوهمية
+                        sym_state["in_position"] = True
+                        sym_state["entry_price"] = close
+                        sym_state["entry_time"] = datetime.now()
+                        sym_state["peak_since_exit"] = 0.0
+                        
+                        msg = f"🛒 <b>تنبيه شراء (إشارة دخول)</b>\n" \
+                              f"🔹 <b>العملة:</b> {symbol}\n" \
+                              f"🕒 <b>الوقت:</b> {curr_time}\n" \
+                              f"💵 <b>السعر الحالي:</b> {close} $\n" \
+                              f"🎯 <b>الهدف المبرمج:</b> {close * (1 + TP_PERC/100):.4f} $\n" \
+                              f"🛑 <b>وقف الخسارة:</b> {close * (1 - SL_PERC/100):.4f} $"
+                        
+                        send_telegram(msg)
+                        logging.info(f"إشارة شراء: {symbol} بسعر {close}")
+
+                # --- منطق الخروج (تنبيه بيع) ---
+                else:
+                    tp_price = sym_state["entry_price"] * (1 + TP_PERC / 100)
+                    sl_price = sym_state["entry_price"] * (1 - SL_PERC / 100)
+
+                    if close >= tp_price or close <= sl_price:
+                        is_win = close >= tp_price
+                        profit_perc = ((close - sym_state["entry_price"]) / sym_state["entry_price"]) * 100
+                        duration = str(datetime.now() - sym_state["entry_time"]).split('.')[0]
+                        
+                        if is_win:
+                            self.stats["win"] += 1
+                            icon, txt = "✅", "الهدف (TP)"
+                        else:
+                            self.stats["loss"] += 1
+                            icon, txt = "❌", "وقف الخسارة (SL)"
+                        
+                        msg = f"{icon} <b>تنبيه إغلاق ({txt})</b>\n" \
+                              f"🔹 <b>العملة:</b> {symbol}\n" \
+                              f"💵 <b>سعر الدخول:</b> {sym_state['entry_price']:.4f} $\n" \
+                              f"💰 <b>سعر الإغلاق:</b> {close:.4f} $\n" \
+                              f"📈 <b>الربح/الخسارة:</b> {profit_perc:.2f}%\n" \
+                              f"⏳ <b>وقت الدخول:</b> {sym_state['entry_time'].strftime('%H:%M:%S')}\n" \
+                              f"🕒 <b>وقت الإغلاق:</b> {datetime.now().strftime('%H:%M:%S')}\n" \
+                              f"⏱ <b>المدة المستغرقة:</b> {duration}"
+                        
+                        send_telegram(msg)
+                        logging.info(f"إغلاق {symbol} | الربح: {profit_perc:.2f}%")
+                        
+                        # تصفير حالة العملة للمراقبة من جديد
+                        sym_state["in_position"] = False
+                        sym_state["entry_price"] = 0.0
+                        sym_state["peak_since_exit"] = high
+
+            except Exception as e:
+                logging.error(f"خطأ في جلب بيانات {symbol}: {e}")
+                time.sleep(1) 
+
+    # ==========================================
+    # === 4. تقارير الأرباح (اليومية والأسبوعية) ===
+    # ==========================================
+    def send_report(self, report_type):
+        wins = self.stats["win"]
+        losses = self.stats["loss"]
+        total = wins + losses
+        win_rate = (wins / total * 100) if total > 0 else 0
+        
+        # حساب الصفقات المفتوحة حالياً من الذاكرة
+        open_trades = sum(1 for sym in self.state if self.state[sym]["in_position"])
+        
+        title = "📊 تقرير التنبيهات اليومي" if report_type == "daily" else "📈 تقرير التنبيهات الأسبوعي"
+        
+        msg = f"<b>{title}</b>\n" \
+              f"────────────────\n" \
+              f"✅ <b>التوصيات الناجحة:</b> {wins}\n" \
+              f"❌ <b>التوصيات الخاسرة:</b> {losses}\n" \
+              f"🎯 <b>نسبة نجاح البوت:</b> {win_rate:.1f}%\n" \
+              f"🔄 <b>الصفقات المفتوحة حالياً:</b> {open_trades}\n" \
+              f"────────────────"
+        
+        send_telegram(msg)
+        logging.info(f"تم إرسال {report_type} تقرير.")
+        
+        # تصفير عداد الأرباح للتقرير القادم (لا نصفر الصفقات المفتوحة)
+        self.stats["win"] = 0
+        self.stats["loss"] = 0
+
+# ==========================================
+# === 5. التشغيل والمزامنة الدقيقة ===
+# ==========================================
+if __name__ == "__main__":
+    bot = AlertBot()
+    
+    # فحص جميع العملات في بداية كل دقيقة جديدة (عند الثانية :03)
+    schedule.every().minute.at(":03").do(bot.run_strategy)
+    
+    # جدولة التقارير
+    schedule.every().day.at("23:59").do(bot.send_report, report_type="daily")
+    schedule.every().sunday.at("23:58").do(bot.send_report, report_type="weekly")
+
+    logging.info("⏳ جاري المراقبة... سيتم فحص قائمة العملات كل دقيقة.")
+
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
